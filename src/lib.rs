@@ -2,11 +2,12 @@ mod handler;
 mod proposal;
 mod protocol;
 
-pub use self::protocol::PROTOCOL_NAME;
+// pub use self::protocol::PROTOCOL_NAME;
 // pub use handler::{Config, Failure};
 
 use futures::stream::StreamExt;
 use libp2p::{gossipsub, mdns, noise, swarm::NetworkBehaviour, swarm::SwarmEvent, tcp, yamux};
+use proposal::Proposal;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::hash::{Hash, Hasher};
@@ -79,9 +80,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Client sends proposal and peers come to its consensus");
 
-    loop{
-        // select! {}
+    // let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+
+    let mut is_primary = false;
+
+    // when peer is primary, get proposal from client.json
+    if let Some(peer_role) = std::env::args().nth(1){
+        is_primary = peer_role == *"primary".to_string();
+    }
+    
+    // event loop for swarm state machine kicks off
+    loop {
+        select! {
+            Ok()
+            event = swarm.select_next_some() => match event{}
+        }
     }
 
     Ok(())
+}
+
+fn get_client_proposal() -> Result<Proposal, Box<dyn Error>> {
+    let input_path = "client.json".to_string();
+    let input = std::fs::read_to_string(input_path)?;
+    let given_proposal = serde_json::from_str::<Proposal>(&input)?;
+
+    Ok(given_proposal)
 }
