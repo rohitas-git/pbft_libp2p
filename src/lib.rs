@@ -1,3 +1,4 @@
+mod event_loop;
 mod handler;
 mod proposal;
 mod protocol;
@@ -5,22 +6,21 @@ mod protocol;
 // pub use self::protocol::PROTOCOL_NAME;
 // pub use handler::{Config, Failure};
 
-use futures::stream::StreamExt;
-use libp2p::{gossipsub, mdns, noise, swarm::NetworkBehaviour, swarm::SwarmEvent, tcp, yamux};
+pub use futures::stream::StreamExt;
+pub use libp2p::{
+    gossipsub, mdns, noise, swarm::NetworkBehaviour, swarm::SwarmEvent, tcp, yamux, Swarm,
+};
 use proposal::Proposal;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
-use tokio::{io, io::AsyncBufReadExt, select};
+pub use tokio::{io, io::AsyncBufReadExt, select};
 use tracing_subscriber::EnvFilter;
 
-// We create a custom network behaviour that combines Gossipsub and Mdns.
-#[derive(NetworkBehaviour)]
-struct MyBehaviour {
-    gossipsub: gossipsub::Behaviour,
-    mdns: mdns::tokio::Behaviour,
-}
+use proposal::PbftBehaviour;
+
+pub const PBFT_TOPIC: &str = "pbft-net";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -29,8 +29,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
 
-    // Build the Swarm, which is manager for p2p network (it's a state machine)
-    let mut swarm = libp2p::SwarmBuilder::with_new_identity()
+    let mut swarm = create_swarm()?;
+    println!("Own Peer Id: {}", swarm.local_peer_id());
+
+    swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
+    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+    println!("Client sends proposal and peers come to its consensus");
+
+
+    event_loop::run(swarm).await;
+
+    Ok(())
+}
+
+
+fn create_swarm() -> Result<Swarm<PbftBehaviour>, Box<dyn Error>> {
+    let swarm = libp2p::SwarmBuilder::with_new_identity()
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
@@ -62,48 +76,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             let mdns =
                 mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?;
-            Ok(MyBehaviour { gossipsub, mdns })
+            Ok(PbftBehaviour { gossipsub, mdns })
         })?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
-    println!("Own Peer Id: {}", swarm.local_peer_id());
-
-    // Create a Gossipsub topic
-    let topic = gossipsub::IdentTopic::new("pbft-net");
-    // subscribes to our topic
-    swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
-
-    // Listen on all interfaces and whatever port the OS assigns
-    swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-    println!("Client sends proposal and peers come to its consensus");
-
-    // let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
-
-    let mut is_primary = false;
-
-    // when peer is primary, get proposal from client.json
-    if let Some(peer_role) = std::env::args().nth(1){
-        is_primary = peer_role == *"primary".to_string();
-    }
-    
-    // event loop for swarm state machine kicks off
-    loop {
-        select! {
-            Ok()
-            event = swarm.select_next_some() => match event{}
-        }
-    }
-
-    Ok(())
-}
-
-fn get_client_proposal() -> Result<Proposal, Box<dyn Error>> {
-    let input_path = "client.json".to_string();
-    let input = std::fs::read_to_string(input_path)?;
-    let given_proposal = serde_json::from_str::<Proposal>(&input)?;
-
-    Ok(given_proposal)
+    Ok(swarm)
 }
