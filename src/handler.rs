@@ -1,4 +1,3 @@
-use std::ptr::metadata;
 
 use crate::{
     proposal::{self, EventType, PbftBehaviour, Proposal, Outcome, PbftPeerMetadata},
@@ -26,6 +25,8 @@ pub fn handle_gossip_message(
     let event = serde_json::from_slice::<EventType>(&message.data)
         .expect("can get event from gossip message");
 
+
+
     println!("Event recieved: {:?}", event);
 
     if let EventType::Send(proposal) = event {
@@ -50,7 +51,10 @@ fn handle_request_from_client(swarm: &mut Swarm<PbftBehaviour>, proposal: Propos
     let event = EventType::Send(next_proposal);
     let event = serde_json::to_string(&event).expect("can serialize proposal");    let topic = gossipsub::IdentTopic::new(PBFT_TOPIC);
 
+    
     if metadata.is_primary(){
+        tracing::info!("[REQUEST STAGE]: Primary peer sends Pre-Prepared Proposal to other peers");
+
         swarm
         .behaviour_mut()
         .gossipsub
@@ -70,6 +74,9 @@ fn handle_pre_prepare(swarm: &mut Swarm<PbftBehaviour>, proposal: Proposal, meta
     let event = EventType::Send(to_send);
     let event = serde_json::to_string(&event).expect("can serialize proposal");    let topic = gossipsub::IdentTopic::new(PBFT_TOPIC);
     
+    tracing::info!("[PRE-PREPARE STAGE]: Secondary peer sends Prepared Proposal to other peers");
+    
+    // Peers send secondary proposal to other peers
     swarm
         .behaviour_mut()
         .gossipsub
@@ -84,13 +91,13 @@ fn handle_prepare(swarm: &mut Swarm<PbftBehaviour>, proposal: Proposal, metadata
     let event = EventType::Send(to_send);
     let event = serde_json::to_string(&event).expect("can serialize proposal");    let topic = gossipsub::IdentTopic::new(PBFT_TOPIC);
     
-    swarm
-        .behaviour_mut()
-        .gossipsub
-        .publish(topic, event.as_bytes());
+    // increase count, since recieved a prepare stage message
+    metadata.increment_count();
+
+    tracing::info!("[PREPARE STAGE]: Secondary peer sends Prepared Proposal to other peers");
+   todo!()
+
 }
-
-
 
 fn handle_commit(swarm: &mut Swarm<PbftBehaviour>, proposal: Proposal, metadata: &mut PbftPeerMetadata, vote: bool) {
     let to_send = proposal.to_commit(vote);

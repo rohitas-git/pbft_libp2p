@@ -8,6 +8,11 @@ use tracing_subscriber::EnvFilter;
 
 pub const PBFT_TOPIC: &str = "pbft-net";
 
+// 6 seconds
+const PBFT_TIME: u32 = 6;
+
+
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let _ = tracing_subscriber::fmt()

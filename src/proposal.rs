@@ -127,6 +127,7 @@ pub struct PbftPeerMetadata {
     is_primary: bool,
     primary_proposal: Option<Proposal>,
     secondary_proposals: Vec<Proposal>,
+    recipient_count: u32,
 }
 
 impl PbftPeerMetadata {
@@ -137,7 +138,12 @@ impl PbftPeerMetadata {
             is_primary: false,
             primary_proposal: None,
             secondary_proposals: Vec::new(),
+            recipient_count: 0,
         }
+    }
+
+    pub fn increment_count(&mut self){
+        self.recipient_count +=1;
     }
 
     pub fn set_primary_proposal(&mut self, proposal: &Proposal){

@@ -46,6 +46,10 @@ pub fn setup(swarm:&mut Swarm<PbftBehaviour>) -> Result<PbftPeerMetadata, Box<dy
     Ok(metadata)
 }
 
+fn count_of_preprepared_message(swarm:&mut Swarm<PbftBehaviour>){
+    swarm.behaviour().gossipsub.mesh_peers(topic_hash)
+}
+
 pub async fn run(
     mut swarm: Swarm<PbftBehaviour>,
     metadata: &mut PbftPeerMetadata,
