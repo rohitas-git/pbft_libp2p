@@ -1,13 +1,14 @@
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::{gossipsub, mdns, Multiaddr};
+use libp2p::{gossipsub, mdns, Multiaddr, Swarm};
 use serde::{Deserialize, Serialize};
 
 type Valid = bool;
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Members: stage, ClientAddr, Content
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Proposal {
     /// stage of proposal
-    pub mode: ConsensusStage,
+    pub stage: ConsensusStage,
     /// during dev, client is the primary peer itself
     client: String,
     /// the content of proposal
@@ -15,45 +16,51 @@ pub struct Proposal {
 }
 
 impl Proposal {
+    /// Create a new request from client with some content
     pub fn new_request(client: String, content: String) -> Self {
         Proposal {
-            mode: ConsensusStage::RequestFromClient,
+            stage: ConsensusStage::RequestFromClient,
             client,
             content,
         }
     }
 
+    /// Change the stage to PrePrepare
     pub fn to_pre_prepare(self) -> Self {
         Proposal {
-            mode: ConsensusStage::PrePrepare,
+            stage: ConsensusStage::PrePrepare,
             ..self
         }
     }
 
+    /// Change the stage to Prepare
     pub fn to_prepare(self) -> Self {
         Proposal {
-            mode: ConsensusStage::Prepare,
+            stage: ConsensusStage::Prepare,
             ..self
         }
     }
 
+    /// Change the stage to Commit(vote)
     pub fn to_commit(self, vote: Valid) -> Self {
         Proposal {
-            mode: ConsensusStage::Commit(vote),
+            stage: ConsensusStage::Commit(vote),
             ..self
         }
     }
 
-    pub fn to_accept_proposal(self, vote: Valid) -> Self {
+    /// Change the stage to Result(Outcome::Accepted(valid))
+    pub fn to_accept_proposal(self, valid: Valid) -> Self {
         Proposal {
-            mode: ConsensusStage::Result(Outcome::Accepted(vote)),
+            stage: ConsensusStage::Result(Outcome::Accepted(valid)),
             ..self
         }
     }
 
-    pub fn to_reject_proposal(self, vote: Valid) -> Self {
+    /// Change the stage to Result(Outcome::Rejected)
+    pub fn to_reject_proposal(self) -> Self {
         Proposal {
-            mode: ConsensusStage::Result(Outcome::Rejected),
+            stage: ConsensusStage::Result(Outcome::Rejected),
             ..self
         }
     }
@@ -61,7 +68,7 @@ impl Proposal {
 
 /// ProposalMode is an enum that is used for matching the types of messages passed.
 /// ProposalMode is used to determine how the message is processed.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ConsensusStage {
     /// a client sending a request to the primary (leader) node in the pBFT network.
     RequestFromClient,
@@ -79,7 +86,7 @@ pub enum ConsensusStage {
     Result(Outcome),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Outcome {
     Accepted(Valid),
     Rejected,
@@ -110,4 +117,56 @@ pub fn get_client_proposal() -> Proposal {
         serde_json::from_str::<Proposal>(&input).expect("can jsonify client proposal");
 
     given_proposal
+}
+
+#[derive(Debug)]
+pub struct PbftPeerMetadata {
+    // pbft_peers_count: u32,
+    in_favor: u32,
+    opp_favor: u32,
+    is_primary: bool,
+    primary_proposal: Option<Proposal>,
+    secondary_proposals: Vec<Proposal>,
+}
+
+impl PbftPeerMetadata {
+    pub fn new() -> Self {
+        PbftPeerMetadata {
+            in_favor: 0,
+            opp_favor: 0,
+            is_primary: false,
+            primary_proposal: None,
+            secondary_proposals: Vec::new(),
+        }
+    }
+
+    pub fn set_primary_proposal(&mut self, proposal: &Proposal){
+        if self.primary_proposal.is_some(){
+            println!("Overwriting the primary proposal: {:?} ", self.primary_proposal.clone().unwrap());
+        }
+        else{
+            self.primary_proposal = Some(proposal.clone());
+        }
+    }
+
+    pub fn add_secondary_proposal(&mut self, sec_proposal: &Proposal){
+        self.secondary_proposals.push(sec_proposal.clone());
+    }
+
+    pub fn set_primary(&mut self) {
+        self.is_primary = true;
+    }
+
+    pub fn is_primary(&self) -> bool {
+        self.is_primary
+    }
+
+    pub fn reset(&mut self) {
+        self.in_favor = 0;
+        self.opp_favor = 0;
+        self.primary_proposal = None;
+        self.secondary_proposals = Vec::new();
+    }
+
+
 }
